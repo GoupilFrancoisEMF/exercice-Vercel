@@ -1,14 +1,243 @@
-<!DOCTYPE html> 
-<html lang="en"> 
-    <head> 
-        <meta charset="utf-8" /> 
-        <title>Snake</title>  
-        <link rel="stylesheet" href="css/main.css" type="text/css" />  
-        <script src="js/snake.js"></script>
-    </head>
-    <body id="body">
-        <script type="text/javascript">
-            var snake = new SnakeGame('body');
-        </script>
-    </body> 
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake Game v1.2</title>
+<style>
+  body { font-family: system-ui, Arial; margin: 20px; }
+  #snake-container { max-width: 500px; margin: 0 auto; }
+  canvas { border: 1px solid #333; display: block; margin-top: 10px; }
+  button { padding: 6px 12px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="snake-container"></div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  var SnakeGame = function(containerId){
+    var self = this;
+
+    this.containerId = containerId;
+    this.context = null;
+    this.interval = null;
+    this.timeout = null;
+    this.countdownSeconds = 3;
+
+    this.version = '1.2';
+    this.size = 10;
+    this.baseSpeed = 170;
+    this.speed = 0;
+    this.score = 0;
+    this.foodPerLevel = 5;
+    this.foodTaken = 0;
+    this.currentLevel = 1;
+    this.lastCatchMoment = null;
+
+    // clavier
+    this.keyboardDispatcher = function(event) {
+      var keyCode = event ? event.keyCode : window.event.keyCode;
+      switch(keyCode){
+        case 37: if(self.Snake.direction != 'right') self.Snake.moveLeft(); break;
+        case 38: if(self.Snake.direction != 'down') self.Snake.moveUp(); break;
+        case 39: if(self.Snake.direction != 'left') self.Snake.moveRight(); break;
+        case 40: if(self.Snake.direction != 'up') self.Snake.moveDown(); break;
+      }
+    }
+
+    // lancement du jeu
+    this.start = function() {
+      self.Food.draw();
+      self.Snake.draw();
+      self.restartFoodTaken();
+      self.speed = self.baseSpeed;
+      self.lastCatchMoment = new Date();
+      self.clearTimeEvents();
+      self.interval = setInterval(() => self.Snake.move(), self.speed);
+    }
+
+    this.beforeStart = function() {
+      self.clearTimeEvents();
+      self.context.clearRect(0, 0, self.Screen.gameboard.width, self.Screen.gameboard.height);
+      self.Snake.bornAgain();
+      self.Snake.position.x = 200;
+      self.Snake.position.y = 200;
+      self.countdownSeconds = 3;
+      self.Screen.refreshCountdown();
+      self.Screen.refreshScore();
+      self.Screen.refreshLevel();
+      self.timeout = setTimeout(() => self.countdown(), 1000);
+    }
+
+    this.countdown = function() {
+      if(self.countdownSeconds > 1) {
+        self.countdownSeconds--;
+        self.Screen.refreshCountdown();
+        self.timeout = setTimeout(() => self.countdown(), 1000);
+      } else {
+        self.Screen.hideCountdown();
+        self.start();
+      }
+    }
+
+    this.events = function() {
+      self.Screen.start.onclick = () => { self.beforeStart(); }
+      document.onkeydown = self.keyboardDispatcher;
+    }
+
+    this.load = function() {
+      if(self.Screen.draw()) self.events();
+      else {
+        alert("Votre navigateur ne supporte pas canvas.");
+        self.Screen.container.innerHTML = '';
+      }
+    }
+
+    this.checkIfCanvasIsSupported = function() {
+      if (self.Screen.gameboard.getContext){
+        self.context = self.Screen.gameboard.getContext('2d');
+        return true;
+      }
+      return false;
+    }
+
+    this.restartFoodTaken = function() { self.foodTaken = 0; }
+
+    this.calculateScore = function() {
+      const now = new Date();
+      const elapsedTime = now - self.lastCatchMoment;
+      self.score += (self.currentLevel * 10) + Math.round(((100 / elapsedTime) * 1000));
+      self.Screen.refreshScore();
+      if(self.foodTaken == self.foodPerLevel){
+        self.currentLevel++;
+        self.beforeStart();
+      } else {
+        self.Food.draw();
+        self.lastCatchMoment = new Date();
+      }
+    }
+
+    this.lost = function() {
+      self.clearTimeEvents();
+      alert(`Game over!\nLevel: ${self.currentLevel}\nScore: ${self.score}`);
+      self.restart();
+    }
+
+    this.clearTimeEvents = function(){
+      if(self.timeout) clearTimeout(self.timeout);
+      if(self.interval) clearInterval(self.interval);
+    }
+
+    this.restart = function() {
+      self.context.clearRect(0, 0, self.Screen.gameboard.width, self.Screen.gameboard.height);
+      self.currentLevel = 1;
+      self.score = 0;
+      self.Screen.restart();
+      self.Snake.bornAgain();
+    }
+
+    // Screen
+    this.Screen = {
+      container: document.getElementById(self.containerId),
+      gameboard: null,
+      start: null,
+      level: null,
+      score: null,
+      countdown: null,
+      draw: function() {
+        this.container.innerHTML = `
+          <header><h1>Snake</h1>
+          <div><a href="#" id="start">START</a></div>
+          <div>Level: <span id="level">?</span></div>
+          <div>Score: <span id="score">?</span></div>
+          <div><span id="countdown"></span></div>
+          </header>
+          <canvas id="gameboard" width="400" height="400"></canvas>
+          <footer><p>Snake Game v${self.version}</p></footer>
+        `;
+        this.gameboard = document.getElementById('gameboard');
+        this.start = document.getElementById('start');
+        this.level = document.getElementById('level');
+        this.score = document.getElementById('score');
+        this.countdown = document.getElementById('countdown');
+        return self.checkIfCanvasIsSupported();
+      },
+      refreshLevel: function() { this.level.innerHTML = self.currentLevel; },
+      refreshScore: function() { this.score.innerHTML = self.score; },
+      refreshCountdown: function() { this.countdown.innerHTML = self.countdownSeconds; },
+      restart: function() { this.level.innerHTML='?'; this.score.innerHTML='?'; this.hideCountdown(); },
+      hideCountdown: function() { this.countdown.innerHTML=''; }
+    };
+
+    // Food
+    this.Food = {
+      randomPoint: [],
+      draw: function() {
+        this.calculateRandomPoint();
+        if(self.Snake.body.some(self.Snake.isPieceOfTail)) {
+          this.draw();
+        } else {
+          self.context.fillStyle = '#f00';
+          self.context.fillRect(this.randomPoint[0], this.randomPoint[1], self.size, self.size);
+        }
+      },
+      calculateRandomPoint: function() {
+        this.randomPoint = [
+          Math.floor(Math.random() * (self.Screen.gameboard.width / self.size)) * self.size,
+          Math.floor(Math.random() * (self.Screen.gameboard.height / self.size)) * self.size
+        ];
+      }
+    }
+
+    // Snake
+    this.Snake = {
+      body: [],
+      position: {x:0,y:0},
+      direction: 'right',
+      length: 3,
+      isPieceOfTail: function(element) { return element[0]===self.Food.randomPoint[0] && element[1]===self.Food.randomPoint[1]; },
+      hasEatenItself: function(element) { return element[0]===self.Snake.position.x && element[1]===self.Snake.position.y; },
+      draw: function(){
+        if(self.Snake.position.x<0||self.Snake.position.x>=self.Screen.gameboard.width||self.Snake.position.y<0||self.Snake.position.y>=self.Screen.gameboard.height) { self.lost(); return; }
+        if(self.Snake.body.some(self.Snake.hasEatenItself)) { self.lost(); return; }
+        self.Snake.body.push([self.Snake.position.x,self.Snake.position.y]);
+        self.context.fillStyle='#00f';
+        self.context.fillRect(self.Snake.position.x,self.Snake.position.y,self.size,self.size);
+        if(self.Snake.body.length>self.Snake.length){
+          var tail=self.Snake.body.shift();
+          self.context.clearRect(tail[0],tail[1],self.size,self.size);
+        }
+        if(self.Snake.position.x===self.Food.randomPoint[0] && self.Snake.position.y===self.Food.randomPoint[1]){
+          self.foodTaken++;
+          self.Snake.length++;
+          self.calculateScore();
+        }
+      },
+      move: function(){
+        switch(self.Snake.direction){
+          case 'left': self.Snake.position.x-=self.size; break;
+          case 'up': self.Snake.position.y-=self.size; break;
+          case 'right': self.Snake.position.x+=self.size; break;
+          case 'down': self.Snake.position.y+=self.size; break;
+        }
+        self.Snake.draw();
+      },
+      moveLeft: function(){ self.Snake.direction='left'; },
+      moveUp: function(){ self.Snake.direction='up'; },
+      moveRight: function(){ self.Snake.direction='right'; },
+      moveDown: function(){ self.Snake.direction='down'; },
+      bornAgain: function(){ self.Snake.body=[]; self.Snake.direction='right'; self.Snake.length=3; }
+    };
+
+    self.load();
+  }
+
+  // Lancer le jeu
+  new SnakeGame("snake-container");
+
+});
+</script>
+</body>
 </html>
